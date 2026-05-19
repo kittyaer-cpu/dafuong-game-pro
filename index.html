@@ -1,0 +1,558 @@
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大富翁：超級百貨 Super Sales - 雲端連線版</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #E8D7FF 0%, #C3E2FF 100%);
+            --primary-purple: #B39DDB;
+            --dark-purple: #7E57C2;
+            --accent-blue: #90CAF9;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --text-color: #4A4A4A;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: "PingFang TC", "Microsoft JhengHei", sans-serif; }
+        body { background: var(--bg-gradient); min-height: 100vh; color: var(--text-color); display: flex; flex-direction: column; align-items: center; padding: 15px; background-attachment: fixed; }
+        header { text-align: center; margin-bottom: 10px; }
+        header h1 { color: var(--dark-purple); font-size: 1.8rem; text-shadow: 2px 2px 4px rgba(255,255,255,0.6); }
+
+        #lobby-container {
+            background: var(--card-bg); padding: 30px; border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(126, 87, 194, 0.2); border: 3px solid white;
+            text-align: center; max-width: 400px; width: 100%; margin-top: 50px;
+        }
+        .lobby-input {
+            width: 100%; padding: 12px; margin: 10px 0; border-radius: 12px;
+            border: 2px solid var(--primary-purple); font-size: 1rem; text-align: center; outline: none;
+        }
+        
+        #game-wrapper { display: none; flex-direction: column; align-items: center; width: 100%; }
+        .setting-bar { background: white; padding: 8px 16px; border-radius: 50px; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(126, 87, 194, 0.15); display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: bold; border: 2px solid var(--primary-purple); }
+        .setting-bar input { width: 90px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 6px; text-align: center; outline: none; }
+
+        .game-container { display: flex; gap: 15px; max-width: 1400px; width: 100%; justify-content: center; align-items: flex-start; }
+        .panel { background: var(--card-bg); border-radius: 20px; padding: 15px; box-shadow: 0 8px 24px rgba(142, 120, 200, 0.15); border: 2px solid white; width: 330px; display: flex; flex-direction: column; gap: 12px; }
+        
+        .player-card { padding: 12px; border-radius: 12px; background: white; border-left: 6px solid #ccc; position: relative; }
+        .player-card.active { border-left-color: var(--dark-purple); box-shadow: 0 4px 12px rgba(126, 87, 194, 0.2); }
+        .player-card.p0 { border-left-color: #FF7675; }
+        .player-card.p1 { border-left-color: #74B9FF; }
+        .identity-badge { position: absolute; top: 5px; right: 10px; font-size: 0.7rem; background: #E0E0E0; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+
+        .hand-container { background: rgba(230, 220, 250, 0.4); border-radius: 10px; padding: 8px; margin-top: 5px; }
+        .hand-title { font-size: 0.8rem; font-weight: bold; color: #555; }
+        .hand-cards { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+        
+        .card-tag { display: inline-block; padding: 4px 8px; font-size: 0.75rem; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .tag-sales { background: #FFF9C4; border: 1px solid #FBC02D; color: #F57F17; }
+        .tag-plan { background: #E3F2FD; border: 1px solid #90CAF9; color: #0D47A1; cursor: default; }
+
+        .btn { background: linear-gradient(135deg, #9575CD, #7E57C2); color: white; border: none; padding: 10px; border-radius: 25px; font-size: 1rem; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(126, 87, 194, 0.2); text-align: center; }
+        .btn:disabled { background: #BDBDBD; cursor: not-allowed; }
+        .skill-btn { background: #4FC3F7; font-size: 0.75rem; padding: 6px; margin-top: 4px; border-radius: 6px; border: none; color: white; font-weight: bold; cursor: pointer; width: 100%; text-align: left; }
+
+        .board-wrapper { position: relative; background: var(--card-bg); padding: 12px; border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); border: 3px solid white; }
+        .board { display: grid; grid-template-columns: repeat(7, 90px); grid-template-rows: repeat(7, 90px); gap: 5px; background: #E0E0E0; padding: 5px; border-radius: 12px; }
+        .cell { background: white; border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between; padding: 6px; font-size: 0.75rem; position: relative; font-weight: bold; border: 2px solid #E0E0E0; }
+        
+        .cell.gray { background-color: #F5F5F5; border-color: #D6D6D6; }
+        .cell.green { background-color: #E8F5E9; border-color: #A5D6A7; }
+        .cell.yellow { background-color: #FFFDE7; border-color: #FFF59D; }
+        .cell.pink { background-color: #FFEAEF; border-color: #FFB7CA; }
+        .cell.hq { background: linear-gradient(135deg, #FFD54F, #FFB300); color: #5D4037; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; text-align: center; }
+
+        .cell .type-icon { font-size: 1.2rem; text-align: center; margin: auto 0; }
+        .cell .price { color: #E53935; text-align: right; font-size: 0.7rem; }
+
+        .tokens-container { position: absolute; bottom: 4px; left: 4px; display: flex; gap: 3px; }
+        .token { width: 18px; height: 18px; border-radius: 50%; border: 2px solid white; }
+        .token.p0 { background-color: #FF7675; }
+        .token.p1 { background-color: #74B9FF; }
+
+        .buildings { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; }
+        .building-dot { padding: 2px 5px; font-size: 0.65rem; color: white; border-radius: 4px; font-weight: bold; }
+        .building-dot.shop { background-color: #6C5CE7; }
+        .building-dot.mall { background-color: #D63031; }
+
+        .log-panel { flex: 1; max-width: 320px; background: var(--card-bg); border-radius: 20px; padding: 12px; height: 660px; display: flex; flex-direction: column; border: 2px solid white; }
+        .log-content { flex: 1; overflow-y: auto; background: white; border-radius: 10px; padding: 8px; font-size: 0.8rem; line-height: 1.4; }
+
+        .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); z-index: 100; text-align: center; width: 340px; border: 3px solid var(--primary-purple); }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 99; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>超級百貨 <span>Super Sales 雲端對戰版</span></h1>
+    </header>
+
+    <div id="lobby-container">
+        <h2 style="color:var(--dark-purple); margin-bottom:15px;">百貨連線大廳</h2>
+        <input type="text" id="player-name-input" class="lobby-input" placeholder="請輸入你的暱稱 (例：佩佩)">
+        <input type="text" id="room-id-input" class="lobby-input" placeholder="請輸入房間號碼 (例：520)">
+        <div style="margin-top: 15px;">
+            <button class="btn" style="width:100%;" onclick="joinRoom()">進入 / 創建房間</button>
+        </div>
+        <p id="lobby-status" style="margin-top:15px; font-size:0.85rem; color:#666; font-weight:bold;"></p>
+    </div>
+
+    <div id="game-wrapper">
+        <div class="setting-bar">
+            <span>🏆 獲勝目標金額：$</span>
+            <input type="number" id="win-goal-input" value="30000" step="5000" min="10000" onchange="changeGoalOnCloud()">
+            <span>元 <span id="room-id-display" style="margin-left:15px; color:var(--dark-purple);"></span></span>
+        </div>
+
+        <div class="game-container">
+            <div class="panel">
+                <div id="player0-card" class="player-card p0">
+                    <span class="identity-badge" id="p0-local-tag"></span>
+                    <h3 id="p0-name-label">玩家 1</h3>
+                    <p>現金: $<span id="p0-cash">10000</span></p>
+                    <p>店鋪: <span id="p0-shops">0</span> | 商場: <span id="p0-malls">0</span></p>
+                    <div class="hand-container">
+                        <div class="hand-title">💼 業務員手牌：</div>
+                        <div class="hand-cards" id="p0-sales-hand">無</div>
+                    </div>
+                    <div class="hand-container">
+                        <div class="hand-title">📜 營運計畫：</div>
+                        <div class="hand-cards" id="p0-plan-hand">無</div>
+                    </div>
+                    <div id="p0-active-skills" style="margin-top: 5px;"></div>
+                </div>
+
+                <div id="player1-card" class="player-card p1">
+                    <span class="identity-badge" id="p1-local-tag"></span>
+                    <h3 id="p1-name-label">玩家 2</h3>
+                    <p>現金: $<span id="p1-cash">10000</span></p>
+                    <p>店鋪: <span id="p1-shops">0</span> | 商場: <span id="p1-malls">0</span></p>
+                    <div class="hand-container">
+                        <div class="hand-title">💼 業務員手牌：</div>
+                        <div class="hand-cards" id="p1-sales-hand">無</div>
+                    </div>
+                    <div class="hand-container">
+                        <div class="hand-title">📜 營運計畫：</div>
+                        <div class="hand-cards" id="p1-plan-hand">無</div>
+                    </div>
+                    <div id="p1-active-skills" style="margin-top: 5px;"></div>
+                </div>
+
+                <button id="roll-btn" class="btn" onclick="takeTurn()">擲骰子移動</button>
+                <div id="action-status" style="text-align:center; font-weight:bold; color:var(--dark-purple); font-size:0.9rem;"></div>
+            </div>
+
+            <div class="board-wrapper">
+                <div class="board" id="game-board"></div>
+            </div>
+
+            <div class="log-panel">
+                <h3 style="margin-bottom: 5px; color: var(--dark-purple); font-size:1rem;">同步營業日誌</h3>
+                <div class="log-content" id="log-box"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="overlay"></div>
+    <div class="modal" id="decision-modal">
+        <h3 id="modal-title">土地建設</h3>
+        <p id="modal-desc" style="margin: 12px 0; font-size: 0.9rem; white-space: pre-line;"></p>
+        <div style="display:flex; gap:10px; justify-content: center;">
+            <button class="btn" id="modal-yes-btn" style="background:#4CAF50; padding:8px 15px; font-size:0.9rem;">建設店鋪</button>
+            <button class="btn" id="modal-no-btn" style="background:#FF9800; padding:8px 15px; font-size:0.9rem;">抽取業務員卡</button>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyC0sY6JZPytn_COOnaWtaSNPaz2rMxClqo",
+            authDomain: "da-store-672b6.firebaseapp.com",
+            databaseURL: "https://da-store-672b6-default-rtdb.firebaseio.com/",
+            projectId: "da-store-672b6",
+            storageBucket: "da-store-672b6.firebasestorage.app",
+            messagingSenderId: "112757046080",
+            appId: "1:112757046080:web:f0767f1cfd501246d198a5"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // 完美對照實體地圖格子 24 格
+        const cellConfigs = [
+            { id: 0, name: "紅色總部", type: "HQ", color: "hq" },
+            { id: 1, name: "日用品", type: "🧻", price: 3500, color: "gray" },
+            { id: 2, name: "咖啡", type: "☕", price: 3500, color: "gray" },
+            { id: 3, name: "水果", type: "🍎", price: 4000, color: "gray" },
+            { id: 4, name: "服飾", type: "👗", price: 4500, color: "gray" },
+            { id: 5, name: "電器", type: "🔌", price: 5000, color: "gray" },
+            { id: 6, name: "綠色總部", type: "HQ", color: "hq" },
+            { id: 7, name: "日用品", type: "🧻", price: 3500, color: "green" },
+            { id: 8, name: "咖啡", type: "☕", price: 3500, color: "green" },
+            { id: 9, name: "水果", type: "🍎", price: 4000, color: "green" },
+            { id: 10, name: "服飾", type: "👗", price: 4500, color: "green" },
+            { id: 11, name: "電器", type: "🔌", price: 5000, color: "green" },
+            { id: 12, name: "黃色總部", type: "HQ", color: "hq" },
+            { id: 13, name: "日用品", type: "🧻", price: 3500, color: "yellow" },
+            { id: 14, name: "咖啡", type: "☕", price: 3500, color: "yellow" },
+            { id: 15, name: "水果", type: "🍎", price: 4000, color: "yellow" },
+            { id: 16, name: "服飾", type: "👗", price: 4500, color: "yellow" },
+            { id: 17, name: "電器", type: "🔌", price: 5000, color: "yellow" },
+            { id: 18, name: "藍色總部", type: "HQ", color: "hq" },
+            { id: 19, name: "日用品", type: "🧻", price: 3500, color: "pink" },
+            { id: 20, name: "咖啡", type: "☕", price: 3500, color: "pink" },
+            { id: 21, name: "水果", type: "🍎", price: 4000, color: "pink" },
+            { id: 22, name: "服飾", type: "👗", price: 4500, color: "pink" },
+            { id: 23, name: "電器", type: "🔌", price: 5000, color: "pink" }
+        ];
+        const gridMapping = [[0,0],[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[1,6],[2,6],[3,6],[4,6],[5,6],[6,6],[6,5],[6,4],[6,3],[6,2],[6,1],[6,0],[5,0],[4,0],[3,0],[2,0],[1,0]];
+
+        // 實體卡牌池完整轉錄
+        const planCardsPool = [
+            { id: "54-35", title: "聯名商品大熱賣", type: "bonus_own", desc: "在自己店鋪翻開顧客卡，額外消費1500元。" },
+            { id: "54-36", title: "推出知名動漫聯名商品", type: "bonus_own", desc: "在自己店鋪翻開顧客卡，額外消費1500元。" },
+            { id: "54-37", title: "與網紅合作推出聯名商品", type: "bonus_own", desc: "在自己店鋪翻開顧客卡，額外消費1500元。" },
+            { id: "54-41", title: "介紹客戶獲得回饋金", type: "intercept", desc: "在他人店鋪或商場翻開顧客卡消費時，你先拿1000元。" },
+            { id: "54-42", title: "收取業配費", type: "intercept", desc: "在他人店鋪或商場翻開顧客卡消費時，你先拿1000元。" },
+            { id: "54-43", title: "折扣碼分潤", type: "intercept", desc: "在他人店鋪或商場翻開顧客卡消費時，你先拿1000元。" },
+            { id: "54-44", title: "發動網路負評攻擊", type: "block_rent", desc: "停留他人店或商場，付2000元且不翻顧客卡。" },
+            { id: "54-45", title: "帶風向打壓對手", type: "block_rent", desc: "停留他人店或商場，付2000元且不翻顧客卡。" },
+            { id: "54-46", title: "股東換我當", type: "buyout", desc: "停留他人店鋪時，付3500元將其更換為自己的。" },
+            { id: "54-47", title: "對手倒店我來接手", type: "buyout", desc: "停留他人店鋪時，付3500元將其更換為自己的。" },
+            { id: "54-48", title: "潛入對手公司學習商業機密", type: "hq_double", desc: "停留他人總部時，拿2000元並再玩一回合。" },
+            { id: "54-49", title: "製造公關危機收取封口費", type: "hq_double", desc: "停留他人總部時，拿2000元並再玩一回合。" },
+            { id: "54-51", title: "街拍直播吸引人潮", type: "pay_move", steps: 1, cost: 2000, desc: "不擲骰前進，改為支付2000元走1步。" },
+            { id: "54-52", title: "深入社區認識消費者", type: "pay_move", steps: 2, cost: 2000, desc: "不擲骰前進，改為支付2000元走2步。" },
+            { id: "54-50", title: "業務員績效獎金", type: "draw_bonus", desc: "每次抽取業務員卡時，額外獲得800元。" },
+            { id: "54-54", title: "新店開幕大大優惠", type: "free_draw", desc: "每次建設店鋪時，立刻原地翻開一張顧客卡消費。" }
+        ];
+
+        // 精準轉錄實體卡片數據
+        const customerCards = [
+            { id: "54-01", wish: ["☕", "🔌"], pay: [3000, 5000] },
+            { id: "54-02", wish: ["☕", "🔌"], pay: [2900, 5100] },
+            { id: "54-03", wish: ["☕", "🔌"], pay: [2800, 5200] },
+            { id: "54-04", wish: ["☕", "👗", "🧻"], pay: [3100, 3900, 3000] },
+            { id: "54-05", wish: ["☕", "👗", "🧻"], pay: [3200, 3700, 3100] },
+            { id: "54-06", wish: ["☕", "👗", "🧻"], pay: [3300, 3500, 3200] },
+            { id: "54-07", wish: ["🍎", "👗", "🧻"], pay: [2700, 3300, 2200] },
+            { id: "54-08", wish: ["🍎", "👗", "🧻"], pay: [2900, 3100, 2100] },
+            { id: "54-09", wish: ["🍎", "👗", "🧻"], pay: [3100, 2900, 2000] },
+            { id: "54-10", wish: ["🍎", "☕", "🔌", "🧻"], pay: [3900, 3700, 5700, 2300] }
+        ];
+
+        const salesmanCards = [
+            { id: "54-28", title: "這裡人潮多，開店準沒錯！", keep: true, effect: "move", steps: 3 },
+            { id: "54-29", title: "這裡人潮多，開店準沒錯！", keep: true, effect: "move", steps: 3 },
+            { id: "54-30", title: "這裡人潮多，開店準沒錯！", keep: true, effect: "move", steps: 3 },
+            { id: "54-21", title: "報告老闆！這個區塊很適合我們的店！", keep: true, effect: "move", steps: 4 },
+            { id: "54-22", title: "報告老闆！這個區塊很適合我們的店！", keep: true, effect: "move", steps: 4 },
+            { id: "54-23", title: "報告老闆！這個區塊很適合我們的店！", keep: true, effect: "move", steps: 4 },
+            { id: "54-26", title: "要縮編還是搬遷，請老闆裁示！", keep: false, effect: "choice_money", desc: "獲得1000元或搬移一間店。" },
+            { id: "54-27", title: "要縮編還是搬遷，請老闆裁示！", keep: false, effect: "choice_money", desc: "獲得1000元或搬移一間店。" }
+        ];
+
+        let roomRef = null; let roomId = ""; let localPlayerId = null; let localName = ""; let isMyTurn = false;
+        let gameState = {
+            currentPlayerIndex: 0, winGoal: 30000,
+            boardState: Array(24).fill(null).map(() => ({ owner: null, level: 0 })),
+            players: [
+                { id: 0, name: "等待加入...", cash: 10000, position: 0, shops: 0, malls: 0, salesHand: [], plans: [] },
+                { id: 1, name: "等待加入...", cash: 10000, position: 0, shops: 0, malls: 0, salesHand: [], plans: [] }
+            ],
+            logs: "歡迎來到超級百貨線上戰場！<br>"
+        };
+
+        function joinRoom() {
+            localName = document.getElementById('player-name-input').value.trim();
+            roomId = document.getElementById('room-id-input').value.trim();
+            if(!localName || !roomId) { alert("請填寫名字與房間號碼！"); return; }
+            document.getElementById('lobby-status').innerText = "雲端連線中...";
+            
+            roomRef = database.ref('rooms/' + roomId);
+            roomRef.once('value', (snapshot) => {
+                if(!snapshot.exists()) {
+                    localPlayerId = 0;
+                    gameState.players[0].name = localName;
+                    roomRef.set({ meta: { p0_connected: true, p1_connected: false }, state: gameState });
+                    setupRoomListener();
+                } else {
+                    let data = snapshot.val();
+                    if(data.meta.p1_connected && data.state.players[1].name !== localName) {
+                        alert("該房間已滿人！"); document.getElementById('lobby-status').innerText = ""; return;
+                    }
+                    localPlayerId = 1;
+                    roomRef.child('meta/p1_connected').set(true);
+                    roomRef.child('state/players/1/name').set(localName);
+                    roomRef.child('state/logs').set((data.state.logs || "") + `🌐 <b>${localName}</b> 已成功連線加入！對決開始！<br>`);
+                    setupRoomListener();
+                }
+            });
+        }
+
+        function setupRoomListener() {
+            document.getElementById('lobby-container').style.display = 'none';
+            document.getElementById('game-wrapper').style.display = 'flex';
+            document.getElementById('room-id-display').innerText = `🏠 房間: ${roomId}`;
+            document.getElementById('p0-local-tag').innerText = (localPlayerId === 0) ? "YOU" : "對手";
+            document.getElementById('p1-local-tag').innerText = (localPlayerId === 1) ? "YOU" : "對手";
+            initBoardUI();
+
+            roomRef.child('state').on('value', (snapshot) => {
+                if(!snapshot.exists()) return;
+                gameState = snapshot.val();
+                if(!gameState.players[0].salesHand) gameState.players[0].salesHand = [];
+                if(!gameState.players[0].plans) gameState.players[0].plans = [];
+                if(!gameState.players[1].salesHand) gameState.players[1].salesHand = [];
+                if(!gameState.players[1].plans) gameState.players[1].plans = [];
+                syncStateToUI();
+            });
+        }
+
+        function initBoardUI() {
+            const boardEl = document.getElementById('game-board');
+            const cellMatrix = Array(7).fill(null).map(() => Array(7).fill(null));
+            cellConfigs.forEach((config, idx) => { const [r, c] = gridMapping[idx]; cellMatrix[r][c] = config; });
+            boardEl.innerHTML = '';
+            for (let r = 0; r < 7; r++) {
+                for (let c = 0; c < 7; c++) {
+                    const config = cellMatrix[r][c]; const cellDiv = document.createElement('div');
+                    if (config) {
+                        cellDiv.className = `cell ${config.color}`; cellDiv.id = `cell-${config.id}`;
+                        if (config.type === "HQ") cellDiv.innerHTML = `<div>${config.name}</div>`;
+                        else cellDiv.innerHTML = `<div>${config.name}</div><div class="type-icon">${config.type}</div><div class="price">$${config.price}</div>`;
+                        cellDiv.innerHTML += `<div class="buildings" id="bld-${config.id}"></div><div class="tokens-container" id="tkn-${config.id}"></div>`;
+                    } else cellDiv.style.background = "transparent";
+                    boardEl.appendChild(cellDiv);
+                }
+            }
+        }
+
+        function syncStateToUI() {
+            document.getElementById('win-goal-input').value = gameState.winGoal;
+            for(let id=0; id<=1; id++) {
+                let p = gameState.players[id];
+                document.getElementById(`p${id}-name-label`).innerText = `${id+1}. ${p.name}`;
+                document.getElementById(`p${id}-cash`).innerText = p.cash;
+                document.getElementById(`p${id}-shops`).innerText = p.shops;
+                document.getElementById(`p${id}-malls`).innerText = p.malls;
+
+                const sHand = document.getElementById(`p${id}-sales-hand`); sHand.innerHTML = "";
+                if(p.salesHand.length === 0) sHand.innerText = "無";
+                else {
+                    p.salesHand.forEach((card, idx) => {
+                        let b = document.createElement('span'); b.className = "card-tag tag-sales"; b.innerText = `🚌走${card.steps}步`;
+                        if(id === localPlayerId && gameState.currentPlayerIndex === localPlayerId) b.onclick = () => useSalesCard(idx);
+                        sHand.appendChild(b);
+                    });
+                }
+
+                const pHand = document.getElementById(`p${id}-plan-hand`); pHand.innerHTML = "";
+                if(p.plans.length === 0) pHand.innerText = "無";
+                else {
+                    p.plans.forEach(card => {
+                        let s = document.createElement('span'); s.className = "card-tag tag-plan"; s.innerText = card.title; s.title = card.desc;
+                        pHand.appendChild(s);
+                    });
+                }
+
+                const skillBox = document.getElementById(`p${id}-active-skills`); skillBox.innerHTML = "";
+                if(id === localPlayerId && gameState.currentPlayerIndex === localPlayerId) {
+                    p.plans.forEach(card => {
+                        if(card.type === "pay_move") {
+                            let btn = document.createElement('button'); btn.className = "skill-btn";
+                            btn.innerText = `⚡ 發動【${card.title}】(付$${card.cost}走${card.steps}步)`;
+                            btn.onclick = () => usePayMoveSkill(card);
+                            skillBox.appendChild(btn);
+                        }
+                    });
+                }
+                document.getElementById(`player${id}-card`).className = `player-card p${id} ${id === gameState.currentPlayerIndex ? 'active' : ''}`;
+            }
+
+            for(let i=0; i<24; i++) {
+                const tBox = document.getElementById(`tkn-${i}`); if(tBox) tBox.innerHTML = '';
+                const bBox = document.getElementById(`bld-${i}`); if(bBox) bBox.innerHTML = '';
+                let bState = gameState.boardState[i];
+                if(bState && bState.owner !== null && bState.owner !== undefined) {
+                    if (bState.level === 1) bBox.innerHTML = `<div class="building-dot shop">店鋪</div>`;
+                    else if (bState.level === 2) bBox.innerHTML = `<div class="building-dot mall">商場</div>`;
+                }
+            }
+            gameState.players.forEach(p => {
+                const tBox = document.getElementById(`tkn-${p.position}`); if(tBox) tBox.innerHTML += `<div class="token p${p.id}" title="${p.name}"></div>`;
+            });
+
+            const logBox = document.getElementById('log-box'); logBox.innerHTML = gameState.logs; logBox.scrollTop = logBox.scrollHeight;
+            isMyTurn = (gameState.currentPlayerIndex === localPlayerId);
+            const rollBtn = document.getElementById('roll-btn');
+            if (isMyTurn) { rollBtn.disabled = false; document.getElementById('action-status').innerText = `🔴 輪到你了！請採取行動`; }
+            else { rollBtn.disabled = true; document.getElementById('action-status').innerText = `⏳ 等待對手行動...`; }
+        }
+
+        function uploadState() { roomRef.child('state').set(gameState); }
+        function addLog(msg) { gameState.logs += msg + "<br>"; }
+
+        function changeGoalOnCloud() {
+            let val = parseInt(document.getElementById('win-goal-input').value) || 30000;
+            gameState.winGoal = val; addLog(`📢 <b>【目標變更】</b> 獲勝金額調整為 <b>$${val}</b> 元！`); uploadState();
+        }
+
+        function takeTurn() {
+            if(!isMyTurn) return; document.getElementById('roll-btn').disabled = true;
+            let p = gameState.players[localPlayerId];
+            let d1 = Math.floor(Math.random() * 6) + 1; let d2 = Math.floor(Math.random() * 6) + 1; let steps = d1 + d2;
+            addLog(`🎲 <b>${p.name}</b> 擲出了 ${d1} + ${d2} = <b>${steps}</b> 點`); movePlayerCloud(p, steps);
+        }
+
+        function useSalesCard(idx) {
+            if(!isMyTurn) return;
+            let p = gameState.players[localPlayerId]; let card = p.salesHand[idx];
+            addLog(`💼 <b>${p.name}</b> 派出業務員，指定前進 <b>${card.steps}</b> 步！`);
+            p.salesHand.splice(idx, 1); movePlayerCloud(p, card.steps);
+        }
+
+        function usePayMoveSkill(card) {
+            if(!isMyTurn) return;
+            let p = gameState.players[localPlayerId];
+            if(p.cash < card.cost) { alert("現金不足！"); return; }
+            p.cash -= card.cost; addLog(`📺 <b>${p.name}</b> 發動營運計畫【${card.title}】，前進 <b>${card.steps}</b> 步！`); movePlayerCloud(p, card.steps);
+        }
+
+        function movePlayerCloud(player, steps) {
+            let currentPos = player.position;
+            for (let i = 1; i <= steps; i++) {
+                currentPos = (currentPos + 1) % 24;
+                let isOwnHQ = (player.id === 0 && currentPos === 0) || (player.id === 1 && currentPos === 18);
+                if (cellConfigs[currentPos].type === "HQ" && isOwnHQ) {
+                    player.cash += 3000;
+                    let card = planCardsPool[Math.floor(Math.random() * planCardsPool.length)];
+                    if(!player.plans) player.plans = [];
+                    player.plans.push(card);
+                    addLog(`📜 <b>${player.name}</b> 經過/停留總部！領取 $3000 並獲得計畫：<span style="color:#0D47A1;">${card.title}</span>`);
+                }
+            }
+            player.position = currentPos; uploadState();
+            setTimeout(() => { handleCellLandingCloud(player, currentPos); }, 600);
+        }
+
+        function handleCellLandingCloud(player, cellId) {
+            let config = cellConfigs[cellId]; let state = gameState.boardState[cellId];
+            if (config.type === "HQ") {
+                let isOpponentHQ = (player.id === 0 && cellId === 18) || (player.id === 1 && cellId === 0);
+                if (isOpponentHQ && player.plans && player.plans.some(c => c.type === "hq_double")) {
+                    player.cash += 2000; addLog(`🕵️ 停留對手總部！發動營運計畫，收取 $2000 封口費並<b>再玩一回合</b>！`); uploadState(); return;
+                }
+                addLog(`🏁 抵達 ${config.name}。`); endTurnCloud(); return;
+            }
+            if (!state || state.owner === null || state.owner === undefined) {
+                showDecisionModalCloud(player, config, cellId);
+            } else {
+                if(state.owner !== player.id) {
+                    if(player.plans && player.plans.some(c => c.type === "block_rent") && player.cash >= 2000) {
+                        if(confirm(`是否啟動計畫防禦？支付$2000不翻顧客卡。`)) {
+                            player.cash -= 2000; addLog(`🛡️ <b>${player.name}</b> 帶風向成功，完美避險不翻卡！`); endTurnCloud(); return;
+                        }
+                    }
+                    if(state.level === 1 && player.plans && player.plans.some(c => c.type === "buyout") && player.cash >= 3500) {
+                        if(confirm(`是否強行收購此店鋪？花費 $3500。`)) {
+                            player.cash -= 3500; let oldOwner = gameState.players[state.owner]; oldOwner.shops--; player.shops++;
+                            gameState.boardState[cellId].owner = player.id; addLog(`💥 <b>股東換我當！</b> ${player.name} 強制接管該店鋪！`);
+                            checkAndMergeMallsCloud(player, cellId); endTurnCloud(); return;
+                        }
+                    }
+                }
+                triggerCustomerCardCloud(player, config, cellId);
+            }
+        }
+
+        function showDecisionModalCloud(player, config, cellId) {
+            const modal = document.getElementById('decision-modal'); const overlay = document.getElementById('overlay');
+            document.getElementById('modal-title').innerText = `${config.name}`;
+            document.getElementById('modal-desc').innerText = `建設店鋪需要資金 $${config.price}元。\n若不建設，將自動為你【抽取一張業務員手牌】。`;
+            modal.style.display = 'block'; overlay.style.display = 'block';
+
+            document.getElementById('modal-yes-btn').onclick = () => {
+                if (player.cash >= config.price) {
+                    player.cash -= config.price; gameState.boardState[cellId] = { owner: player.id, level: 1 }; player.shops++;
+                    addLog(`🏗️ <b>${player.name}</b> 支付 $${config.price} 建立了新店鋪！`);
+                    let hasFreeDraw = player.plans && player.plans.some(c => c.type === "free_draw");
+                    checkAndMergeMallsCloud(player, cellId); closeModal();
+                    if(hasFreeDraw) {
+                        addLog(`🎉 觸發【新店開幕優惠】！立刻原地翻開一張顧客卡消費。`); triggerCustomerCardCloud(player, config, cellId);
+                    } else { endTurnCloud(); }
+                } else { alert("資金不足，自動轉為抽取業務員卡！"); closeModal(); drawSalesmanCardCloud(player); }
+            };
+            document.getElementById('modal-no-btn').onclick = () => { closeModal(); drawSalesmanCardCloud(player); };
+        }
+
+        function closeModal() { document.getElementById('decision-modal').style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }
+
+        function drawSalesmanCardCloud(player) {
+            let card = salesmanCards[Math.floor(Math.random() * salesmanCards.length)];
+            if(card.keep) {
+                if(!player.salesHand) player.salesHand = [];
+                player.salesHand.push(card); addLog(`💼 <b>${player.name}</b> 獲得了業務員卡：【${card.title}】`);
+            } else {
+                player.cash += 1000; addLog(`💼 <b>${player.name}</b> 抽到非保留卡【${card.title}】，直接獲得 $1000 元！`);
+            }
+            if(player.plans && player.plans.some(c => c.type === "draw_bonus")) {
+                player.cash += 800; addLog(`└ 💰 觸發【業務員績效獎金】，額外獲得 $800 元！`);
+            }
+            endTurnCloud();
+        }
+
+        function checkAndMergeMallsCloud(player, currentCellId) {
+            let currentConfig = cellConfigs[currentCellId];
+            let prevId = (currentCellId - 1 + 24) % 24; let nextId = (currentCellId + 1) % 24;
+            let combine = (targetId) => {
+                let targetConfig = cellConfigs[targetId]; let targetState = gameState.boardState[targetId];
+                if (targetState && targetState.owner === player.id && targetState.level === 1 && targetConfig.color === currentConfig.color) {
+                    gameState.boardState[currentCellId].level = 2; gameState.boardState[targetId].level = 2;
+                    player.shops -= 2; player.malls += 1; addLog(`✨🎉 <b>相鄰同色連線！店鋪升級合併為【百貨商場】！</b>`); return true;
+                }
+                return false;
+            };
+            if (!combine(prevId)) combine(nextId);
+        }
+
+        function triggerCustomerCardCloud(landingPlayer, config, cellId) {
+            let landState = gameState.boardState[cellId]; let ownerPlayer = gameState.players[landState.owner];
+            let card = customerCards[Math.floor(Math.random() * customerCards.length)];
+            addLog(`👥 翻開顧客卡 <b>[NO.${card.id}]</b>，想買 [ ${card.wish.join(' ')} ]`);
+            let matchedIndex = card.wish.indexOf(config.type);
+
+            if (matchedIndex !== -1) {
+                let payout = card.pay[matchedIndex];
+                if (landState.level === 2) { payout = payout * 2; addLog(`🏪 這是商場！顧客消費金額直接翻倍！`); }
+                if(ownerPlayer.plans && ownerPlayer.plans.some(c => c.type === "bonus_own")) {
+                    payout += 1500; addLog(`📈 <b>${ownerPlayer.name}</b> 觸發聯名大熱賣，加成 <b>+$1500</b> 元！`);
+                }
+                if(landingPlayer.id !== ownerPlayer.id && landingPlayer.plans && landingPlayer.plans.some(c => c.type === "intercept")) {
+                    let interceptAmt = Math.min(payout, 1000); payout -= interceptAmt; landingPlayer.cash += interceptAmt;
+                    addLog(`🕵️ <b>中途攔截！</b> ${landingPlayer.name} 從中拿走分潤 <b>$${interceptAmt}</b> 元！`);
+                }
+                ownerPlayer.cash += payout; addLog(`💰 結算完成！店主 <b>${ownerPlayer.name}</b> 獲得營收 <b>$${payout}</b> 元！`);
+            } else { addLog(`💨 商品不符，顧客轉頭離開。`); }
+            endTurnCloud();
+        }
+
+        function endTurnCloud() {
+            for (let p of gameState.players) {
+                if (p.cash >= gameState.winGoal) {
+                    addLog(`🏆🎉🏆 <b>${p.name}</b> 賺飽飽率先達到目標！贏得超級百貨王！`); uploadState();
+                    setTimeout(() => { roomRef.remove(); location.reload(); }, 5000); return;
+                }
+            }
+            gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % 2; uploadState();
+        }
+    </script>
+</body>
+</html>
